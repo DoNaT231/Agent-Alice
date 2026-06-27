@@ -38,8 +38,8 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
   }
 
   return (
-    <div className="border-t border-gray-200 bg-white px-6 pb-5 dark:border-gray-700 dark:bg-gray-900">
-      <div className="flex items-end gap-3 rounded-2xl border border-gray-200 bg-gray-50 p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+    <div className="border-t border-gray-200 bg-white px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:px-6 sm:pb-5 sm:pt-0 dark:border-gray-700 dark:bg-gray-900">
+      <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border border-gray-200 bg-gray-50 p-2.5 shadow-sm sm:gap-3 sm:p-3 dark:border-gray-700 dark:bg-gray-800">
         <textarea
           ref={textareaRef}
           className="max-h-40 min-h-[1.5rem] flex-1 resize-none border-none bg-transparent py-1 leading-normal text-gray-900 outline-none placeholder:text-gray-400 disabled:cursor-not-allowed disabled:opacity-60 dark:text-gray-100 dark:placeholder:text-gray-500"
@@ -60,7 +60,7 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
           <Send size={18} />
         </button>
       </div>
-      <p className="mt-2 text-center text-xs text-gray-400 dark:text-gray-500">
+      <p className="mx-auto mt-2 hidden max-w-3xl text-center text-xs text-gray-400 sm:block dark:text-gray-500">
         Press Enter to send, Shift + Enter for a new line
       </p>
     </div>

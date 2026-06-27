@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { SidebarProvider } from '../../context/SidebarContext'
 import { Sidebar } from './Sidebar'
 
 interface AppLayoutProps {
@@ -7,9 +8,11 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar />
-      <main className="flex min-w-0 flex-1 flex-col">{children}</main>
-    </div>
+    <SidebarProvider>
+      <div className="flex h-[100dvh] overflow-hidden">
+        <Sidebar />
+        <main className="flex min-w-0 flex-1 flex-col">{children}</main>
+      </div>
+    </SidebarProvider>
   )
 }

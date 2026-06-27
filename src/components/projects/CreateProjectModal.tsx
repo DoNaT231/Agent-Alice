@@ -59,9 +59,9 @@ export function CreateProjectModal({ userId, onClose, onCreated }: CreateProject
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4">
       <div
-        className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-6 shadow-xl dark:border-gray-700 dark:bg-gray-900"
+        className="max-h-[92dvh] w-full overflow-y-auto rounded-t-2xl border border-gray-200 bg-white p-4 shadow-xl sm:max-w-lg sm:rounded-2xl sm:p-6 dark:border-gray-700 dark:bg-gray-900"
         role="dialog"
         aria-modal="true"
         aria-labelledby="create-project-title"

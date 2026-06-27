@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   Briefcase,
   Calendar,
@@ -13,10 +13,12 @@ import {
   Settings,
   Sparkles,
   Trash2,
+  X,
 } from 'lucide-react'
 import { ThemeToggle } from './ThemeToggle'
 import { CreateProjectModal } from '../projects/CreateProjectModal'
 import { useAuth } from '../../hooks/useAuth'
+import { useSidebar } from '../../hooks/useSidebar'
 import type { Conversation, Project } from '../../types/chat'
 import { getConversationPath } from '../../lib/conversationUtils'
 import { deleteConversation, subscribeToConversations } from '../../lib/chatService'
@@ -24,7 +26,9 @@ import { subscribeToProjects } from '../../lib/projectService'
 
 export function Sidebar() {
   const { user, signOut } = useAuth()
+  const { isOpen, close } = useSidebar()
   const navigate = useNavigate()
+  const location = useLocation()
   const { conversationId, projectId: routeProjectId } = useParams<{
     conversationId?: string
     projectId?: string
@@ -66,6 +70,10 @@ export function Sidebar() {
     [conversations],
   )
 
+  useEffect(() => {
+    close()
+  }, [location.pathname, close])
+
   const handleDeleteConversation = async (event: MouseEvent, conversation: Conversation) => {
     event.preventDefault()
     event.stopPropagation()
@@ -92,7 +100,22 @@ export function Sidebar() {
 
   return (
     <>
-      <aside className="flex h-full w-72 shrink-0 flex-col border-r border-gray-200 bg-white dark:border-white/8 dark:bg-slate-900">
+      {isOpen ? (
+        <button
+          type="button"
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          onClick={close}
+          aria-label="Close menu"
+        />
+      ) : null}
+
+      <aside
+        className={[
+          'fixed inset-y-0 left-0 z-50 flex h-full w-[min(18rem,85vw)] shrink-0 flex-col border-r border-gray-200 bg-white transition-transform duration-200 ease-out dark:border-white/8 dark:bg-slate-900',
+          'md:relative md:z-auto md:w-72 md:max-w-none md:translate-x-0',
+          isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
+        ].join(' ')}
+      >
         <div className="border-b border-gray-200 px-3.5 py-4 dark:border-white/8">
           <div className="mb-4 flex items-center gap-3 px-1">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white">
@@ -106,6 +129,14 @@ export function Sidebar() {
                 {user.displayName ?? user.email}
               </p>
             </div>
+            <button
+              type="button"
+              onClick={close}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 md:hidden dark:text-slate-400 dark:hover:bg-white/6"
+              aria-label="Close menu"
+            >
+              <X size={18} />
+            </button>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
@@ -204,7 +235,7 @@ export function Sidebar() {
                           type="button"
                           onClick={(event) => void handleDeleteConversation(event, conversation)}
                           disabled={deletingId === conversation.id}
-                          className="mt-0.5 rounded p-1 text-gray-400 opacity-0 transition group-hover:opacity-100 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-300"
+                          className="mt-0.5 rounded p-1 text-gray-400 opacity-100 transition hover:bg-red-50 hover:text-red-600 md:opacity-0 md:group-hover:opacity-100 dark:hover:bg-red-950/30 dark:hover:text-red-300"
                           aria-label={`Delete ${conversation.title}`}
                         >
                           {deletingId === conversation.id ? (

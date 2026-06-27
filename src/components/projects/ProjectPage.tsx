@@ -6,6 +6,7 @@ import { getConversationPath } from '../../lib/conversationUtils'
 import { subscribeToConversationsByProject } from '../../lib/chatService'
 import { getProject, updateProject } from '../../lib/projectService'
 import { useAuth } from '../../hooks/useAuth'
+import { MobileMenuButton } from '../layout/MobileMenuButton'
 
 const TONE_OPTIONS: Array<{ value: ProjectTone; label: string }> = [
   { value: 'friendly', label: 'Friendly' },
@@ -92,23 +93,26 @@ export function ProjectPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-white dark:bg-gray-900">
-      <header className="border-b border-gray-200 px-6 py-5 dark:border-gray-700">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <input
-              value={project.name}
-              onChange={(event) => setProject({ ...project, name: event.target.value })}
-              onBlur={() => void handleFieldSave('name', project.name.trim() || 'Untitled project')}
-              className="w-full border-none bg-transparent text-lg font-semibold text-gray-900 outline-none dark:text-gray-100"
-            />
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Project workspace {isSaving ? '· Saving...' : ''}
-            </p>
+      <header className="border-b border-gray-200 px-4 py-3 sm:px-6 sm:py-5 dark:border-gray-700">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+          <div className="flex min-w-0 items-start gap-2 sm:gap-3">
+            <MobileMenuButton />
+            <div className="min-w-0 flex-1">
+              <input
+                value={project.name}
+                onChange={(event) => setProject({ ...project, name: event.target.value })}
+                onBlur={() => void handleFieldSave('name', project.name.trim() || 'Untitled project')}
+                className="w-full border-none bg-transparent text-base font-semibold text-gray-900 outline-none sm:text-lg dark:text-gray-100"
+              />
+              <p className="mt-0.5 text-xs text-gray-500 sm:mt-1 sm:text-sm dark:text-gray-400">
+                Project workspace {isSaving ? '· Saving...' : ''}
+              </p>
+            </div>
           </div>
           <button
             type="button"
             onClick={() => navigate('/chat', { state: { projectId } })}
-            className="inline-flex items-center gap-2 rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:opacity-90 dark:bg-indigo-400"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:opacity-90 sm:w-auto dark:bg-indigo-400"
           >
             <MessageSquarePlus size={16} />
             New chat in this project
@@ -116,7 +120,7 @@ export function ProjectPage() {
         </div>
       </header>
 
-      <div className="grid gap-6 p-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <section className="space-y-4">
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">

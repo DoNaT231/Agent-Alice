@@ -16,6 +16,7 @@ import {
 import { ChatInput } from './ChatInput'
 import { ErrorBanner } from './ErrorBanner'
 import { MessageList } from './MessageList'
+import { MobileMenuButton } from '../layout/MobileMenuButton'
 
 interface ChatLocationState {
   projectId?: string | null
@@ -142,9 +143,18 @@ export function ChatPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-white dark:bg-gray-900">
-      <header className="border-b border-gray-200 px-6 py-5 dark:border-gray-700">
-        <h1 className="m-0 text-lg font-semibold text-gray-900 dark:text-gray-100">{headerTitle}</h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{headerSubtitle}</p>
+      <header className="border-b border-gray-200 px-4 py-3 sm:px-6 sm:py-5 dark:border-gray-700">
+        <div className="flex items-start gap-2 sm:gap-3">
+          <MobileMenuButton />
+          <div className="min-w-0 flex-1">
+            <h1 className="m-0 truncate text-base font-semibold text-gray-900 sm:text-lg dark:text-gray-100">
+              {headerTitle}
+            </h1>
+            <p className="mt-0.5 truncate text-xs text-gray-500 sm:mt-1 sm:text-sm dark:text-gray-400">
+              {headerSubtitle}
+            </p>
+          </div>
+        </div>
       </header>
 
       {error ? <ErrorBanner message={error} onDismiss={() => setError(null)} /> : null}
