@@ -3,16 +3,29 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { handleChatRequest } from './lib/chat-handler.js'
 import { handleTitleRequest } from './lib/title-handler.js'
+import { handleVoiceTranscribeRequest } from './lib/voice-transcribe-handler.js'
 
-type ApiHandler = (
+type JsonApiHandler = (
   method: string,
   body: unknown,
   apiKey: string | undefined,
 ) => Promise<{ status: number; body: unknown }>
 
-const API_ROUTES: Record<string, ApiHandler> = {
+const JSON_API_ROUTES: Record<string, JsonApiHandler> = {
   '/api/chat': handleChatRequest,
   '/api/chat/title': handleTitleRequest,
+}
+
+const VOICE_TRANSCRIBE_ROUTE = '/api/voice/transcribe'
+
+function readRequestBody(req: import('node:http').IncomingMessage): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+
+    req.on('data', (chunk: Buffer) => chunks.push(chunk))
+    req.on('end', () => resolve(Buffer.concat(chunks)))
+    req.on('error', reject)
+  })
 }
 
 function devApiPlugin(env: Record<string, string>): Plugin {
@@ -21,22 +34,44 @@ function devApiPlugin(env: Record<string, string>): Plugin {
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         const pathname = req.url?.split('?')[0] ?? ''
-        const handler = API_ROUTES[pathname]
+
+        if (pathname === VOICE_TRANSCRIBE_ROUTE) {
+          try {
+            const body = await readRequestBody(req)
+            const contentType = req.headers['content-type'] ?? ''
+            const result = await handleVoiceTranscribeRequest(
+              req.method ?? 'GET',
+              body,
+              contentType,
+              env.GEMINI_API_KEY,
+            )
+
+            res.statusCode = result.status
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify(result.body))
+          } catch {
+            res.statusCode = 500
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: 'Request failed.' }))
+          }
+
+          return
+        }
+
+        const handler = JSON_API_ROUTES[pathname]
 
         if (!handler) {
           next()
           return
         }
 
-        const chunks: Buffer[] = []
-        req.on('data', (chunk: Buffer) => chunks.push(chunk))
-
-        req.on('end', async () => {
+        try {
+          const bodyBuffer = await readRequestBody(req)
           let body: unknown = undefined
 
-          if (chunks.length > 0) {
+          if (bodyBuffer.length > 0) {
             try {
-              body = JSON.parse(Buffer.concat(chunks).toString('utf-8'))
+              body = JSON.parse(bodyBuffer.toString('utf-8'))
             } catch {
               res.statusCode = 400
               res.setHeader('Content-Type', 'application/json')
@@ -50,13 +85,11 @@ function devApiPlugin(env: Record<string, string>): Plugin {
           res.statusCode = result.status
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify(result.body))
-        })
-
-        req.on('error', () => {
+        } catch {
           res.statusCode = 500
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify({ error: 'Request failed.' }))
-        })
+        }
       })
     },
   }

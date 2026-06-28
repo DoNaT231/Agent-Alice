@@ -240,3 +240,107 @@ export async function generateConversationTitleWithAI(
 
   throw lastError ?? new Error('All Gemini models failed.')
 }
+
+const TRANSCRIBE_PROMPT =
+  'Transcribe this Hungarian audio accurately. Return only the transcript.'
+
+function normalizeAudioMimeType(mimeType: string): string {
+  const base = mimeType.split(';')[0]?.trim().toLowerCase()
+
+  if (!base || base === 'application/octet-stream') {
+    return 'audio/webm'
+  }
+
+  return base
+}
+
+function sanitizeTranscript(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^```[\w]*\n?|```$/g, '')
+    .replace(/^["'`]+|["'`]+$/g, '')
+    .trim()
+}
+
+async function transcribeWithModel(
+  audio: Buffer,
+  mimeType: string,
+  apiKey: string,
+  modelName: string,
+): Promise<string> {
+  configureDevTls()
+
+  const response = await fetch(
+    `${GEMINI_API_BASE}/models/${modelName}:generateContent`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { text: TRANSCRIBE_PROMPT },
+              {
+                inline_data: {
+                  mime_type: normalizeAudioMimeType(mimeType),
+                  data: audio.toString('base64'),
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    },
+  )
+
+  const data = (await response.json()) as GeminiResponse
+
+  if (!response.ok) {
+    const apiMessage = data.error?.message ?? `Gemini API error (${response.status})`
+    throw new Error(apiMessage)
+  }
+
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text
+  const transcript = sanitizeTranscript(text ?? '')
+
+  if (!transcript) {
+    throw new Error('No speech was detected in the recording.')
+  }
+
+  return transcript
+}
+
+export async function transcribeAudioWithGemini(
+  audio: Buffer,
+  mimeType: string,
+  apiKey: string,
+): Promise<string> {
+  if (!audio.length) {
+    throw new Error('Audio file is required.')
+  }
+
+  const models = getModelCandidates()
+  let lastError: Error | null = null
+
+  for (const modelName of models) {
+    try {
+      return await transcribeWithModel(audio, mimeType, apiKey, modelName)
+    } catch (error) {
+      lastError = formatGeminiError(error)
+
+      const retryable =
+        lastError.message.includes('not available') ||
+        lastError.message.includes('404')
+
+      if (!retryable) {
+        throw lastError
+      }
+    }
+  }
+
+  throw lastError ?? new Error('All Gemini models failed.')
+}
