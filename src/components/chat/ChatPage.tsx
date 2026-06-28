@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import type { ChatMessage, Conversation } from '../../types/chat'
+import type { EmailSentStatusPayload } from '../../../shared/types/messages'
 import { ChatApiError, sendChatMessage } from '../../services/chatApi'
 import { generateConversationTitle } from '../../services/titleApi'
 import { useAuth } from '../../hooks/useAuth'
@@ -13,6 +14,12 @@ import {
   updateConversationLastMessage,
   updateConversationTitle,
 } from '../../lib/chatService'
+import { ChatWorkflowProvider } from '../../features/chat/context/ChatWorkflowProvider'
+import {
+  runSecretaryWorkflow,
+  showProfileCardMessage,
+  startEmailDraftFlow,
+} from '../../features/chat/services/secretaryWorkflow'
 import { ChatInput } from './ChatInput'
 import { ErrorBanner } from './ErrorBanner'
 import { MessageList } from './MessageList'
@@ -21,6 +28,8 @@ import { MobileMenuButton } from '../layout/MobileMenuButton'
 interface ChatLocationState {
   projectId?: string | null
 }
+
+type AssistantMessageInput = Omit<ChatMessage, 'id' | 'createdAt'>
 
 export function ChatPage() {
   const { user } = useAuth()
@@ -41,6 +50,12 @@ export function ChatPage() {
   const [error, setError] = useState<string | null>(null)
 
   const isCreatingRef = useRef(false)
+  const conversationIdRef = useRef<string | undefined>(conversationId)
+  const pendingEmailToRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    conversationIdRef.current = conversationId
+  }, [conversationId])
 
   const loadingMessages = Boolean(conversationId && syncedConversationId !== conversationId)
   const displayMessages = conversationId ? messages : []
@@ -67,6 +82,90 @@ export function ChatPage() {
     navigate(`/chat/${id}`, { replace: true, state: null })
   }
 
+  const addAssistantMessage = useCallback(
+    async (currentConversationId: string, message: AssistantMessageInput) => {
+      if (!user) return
+
+      await addMessage(user.uid, currentConversationId, message)
+      await updateConversationLastMessage(user.uid, currentConversationId, message.content)
+    },
+    [user],
+  )
+
+  const showProfileCard = useCallback(async () => {
+    if (!user) return
+    const currentConversationId = conversationIdRef.current
+    if (!currentConversationId) return
+    await showProfileCardMessage(user.uid, (message) =>
+      addAssistantMessage(currentConversationId, message),
+    )
+  }, [addAssistantMessage, user])
+
+  const continueEmailDraft = useCallback(
+    async (to: string, userMessage = 'Folytasd az email draft készítését.') => {
+      if (!user) return
+      const currentConversationId = conversationIdRef.current
+      if (!currentConversationId) return
+      pendingEmailToRef.current = to
+      await startEmailDraftFlow({
+        userId: user.uid,
+        to,
+        userMessage,
+        addAssistantMessage: (message) => addAssistantMessage(currentConversationId, message),
+        setPendingEmailTo: (value) => {
+          pendingEmailToRef.current = value
+        },
+      })
+    },
+    [addAssistantMessage, user],
+  )
+
+  const appendEmailSentStatus = useCallback(
+    async (content: string, payload: EmailSentStatusPayload) => {
+      if (!user) return
+      const currentConversationId = conversationIdRef.current
+      if (!currentConversationId) return
+      await addAssistantMessage(currentConversationId, {
+        role: 'assistant',
+        type: 'email_sent_status',
+        content,
+        payload,
+        moduleUsed: 'email',
+      })
+    },
+    [addAssistantMessage, user],
+  )
+
+  const continueEmailDraftIfPending = useCallback(async () => {
+    const to = pendingEmailToRef.current
+    if (!to) return false
+    await continueEmailDraft(to)
+    return true
+  }, [continueEmailDraft])
+
+  const notifyProfileSaved = useCallback(
+    async (content: string) => {
+      if (!user) return
+      const currentConversationId = conversationIdRef.current
+      if (!currentConversationId) return
+      await addAssistantMessage(currentConversationId, {
+        role: 'assistant',
+        type: 'text',
+        content,
+        moduleUsed: 'profile',
+      })
+    },
+    [addAssistantMessage, user],
+  )
+
+  const workflow = {
+    showProfileCard,
+    continueEmailDraft,
+    continueEmailDraftIfPending,
+    appendEmailSentStatus,
+    notifyProfileSaved,
+  }
+
   const handleSend = async (content: string) => {
     if (!user || isSending || isCreatingRef.current) return
 
@@ -81,44 +180,55 @@ export function ChatPage() {
       if (!currentConversationId) {
         isCreatingRef.current = true
         currentConversationId = await createConversation(user.uid, content, activeProjectId)
+        conversationIdRef.current = currentConversationId
         navigateToConversation(currentConversationId, activeProjectId)
       }
 
       await addMessage(user.uid, currentConversationId, {
         role: 'user',
+        type: 'text',
         content,
         moduleUsed: 'chat',
       })
 
-      const historyForApi = [...displayMessages, { role: 'user' as const, content }].map(
-        ({ role, content: text }) => ({
-          role,
-          content: text,
-        }),
-      )
-
-      const reply = await sendChatMessage(historyForApi)
-
-      await addMessage(user.uid, currentConversationId, {
-        role: 'assistant',
-        content: reply.content,
-        moduleUsed: 'chat',
+      const handled = await runSecretaryWorkflow({
+        userId: user.uid,
+        userMessage: content,
+        addAssistantMessage: (message) => addAssistantMessage(currentConversationId!, message),
+        getPendingEmailTo: () => pendingEmailToRef.current,
+        setPendingEmailTo: (value) => {
+          pendingEmailToRef.current = value
+        },
       })
 
-      await updateConversationLastMessage(user.uid, currentConversationId, reply.content)
+      if (handled === 'fallback') {
+        const historyForApi = [...displayMessages, { role: 'user' as const, content }].map(
+          ({ role, content: text }) => ({
+            role,
+            content: text,
+          }),
+        )
+
+        const reply = await sendChatMessage(historyForApi)
+
+        await addAssistantMessage(currentConversationId, {
+          role: 'assistant',
+          type: 'text',
+          content: reply.content,
+          moduleUsed: 'chat',
+        })
+      }
+
+      const lastPreview = content.slice(0, 120)
+      await updateConversationLastMessage(user.uid, currentConversationId, lastPreview)
 
       if (isFirstExchange) {
-        void generateConversationTitle([
-          { role: 'user', content },
-          { role: 'assistant', content: reply.content },
-        ])
+        void generateConversationTitle([{ role: 'user', content }])
           .then(async (title) => {
             await updateConversationTitle(user.uid, currentConversationId!, title)
             setConversation((current) => (current ? { ...current, title } : current))
           })
-          .catch(() => {
-            // Keep the fallback title from the first message if AI title generation fails.
-          })
+          .catch(() => undefined)
       } else if (!conversation) {
         const latest = await getConversation(user.uid, currentConversationId)
         setConversation(latest)
@@ -142,7 +252,8 @@ export function ChatPage() {
     : 'Talk to Alice, your AI personal assistant'
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-white dark:bg-gray-900">
+    <ChatWorkflowProvider value={workflow}>
+      <div className="flex h-full min-h-0 flex-col bg-white dark:bg-gray-900">
       <header className="border-b border-gray-200 px-4 py-3 sm:px-6 sm:py-5 dark:border-gray-700">
         <div className="flex items-start gap-2 sm:gap-3">
           <MobileMenuButton />
@@ -169,6 +280,7 @@ export function ChatPage() {
       )}
 
       <ChatInput onSend={handleSend} disabled={isSending || loadingMessages} />
-    </div>
+      </div>
+    </ChatWorkflowProvider>
   )
 }

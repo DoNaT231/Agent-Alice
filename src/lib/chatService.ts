@@ -46,7 +46,9 @@ function mapMessage(snapshot: QueryDocumentSnapshot<DocumentData>): ChatMessage 
   return {
     id: snapshot.id,
     role: data.role as ChatMessage['role'],
+    type: (data.type as ChatMessage['type']) ?? 'text',
     content: data.content as string,
+    payload: (data.payload as ChatMessage['payload']) ?? null,
     model: data.model as string | undefined,
     moduleUsed: (data.moduleUsed as ChatMessage['moduleUsed']) ?? null,
     createdAt: toMillis(data.createdAt as Timestamp | number | undefined),
@@ -160,7 +162,9 @@ export async function addMessage(
   await setDoc(docRef, {
     id: docRef.id,
     role: message.role,
+    type: message.type ?? 'text',
     content: message.content,
+    payload: message.payload ?? null,
     model: message.model ?? null,
     moduleUsed: message.moduleUsed ?? null,
     createdAt: serverTimestamp(),

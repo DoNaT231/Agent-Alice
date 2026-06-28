@@ -1,13 +1,18 @@
 export type MessageRole = 'user' | 'assistant'
 
+export type { MessageType, MessagePayload } from './messages.js'
+import type { MessageType, MessagePayload } from './messages.js'
+
 export type ProjectTone = 'friendly' | 'professional' | 'short' | 'formal'
 
 export interface ChatMessage {
   id: string
   role: MessageRole
+  type?: MessageType
   content: string
+  payload?: MessagePayload | null
   model?: string
-  moduleUsed?: 'chat' | null
+  moduleUsed?: 'chat' | 'email' | 'business' | 'profile' | 'jobs' | null
   createdAt: number
 }
 

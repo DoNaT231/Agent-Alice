@@ -11,3 +11,5 @@ export type {
   TitleRequestBody,
   TitleResponseBody,
 } from '../../shared/types/chat'
+
+export type { MessageType, MessagePayload } from '../../shared/types/messages'

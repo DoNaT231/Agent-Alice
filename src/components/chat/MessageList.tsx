@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { ChatMessage } from '../../types/chat'
-import { MessageBubble } from './MessageBubble'
+import { ChatMessage as ChatMessageView } from '../../features/chat/components/ChatMessage'
 import { LoadingIndicator } from './LoadingIndicator'
 
 interface MessageListProps {
@@ -27,7 +27,7 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
       ) : (
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 sm:gap-5">
           {messages.map((message) => (
-            <MessageBubble key={message.id} message={message} />
+            <ChatMessageView key={message.id} message={message} />
           ))}
           {isLoading ? <LoadingIndicator /> : null}
         </div>
