@@ -5,6 +5,7 @@ import { handleChatRequest } from './lib/chat-handler.js'
 import { handleTitleRequest } from './lib/title-handler.js'
 import { handleVoiceTranscribeRequest } from './lib/voice-transcribe-handler.js'
 import { handleEmailRoute } from './lib/email/routes/email.routes.js'
+import { handleSearchRoute } from './lib/search/routes/search.routes.js'
 
 type JsonApiHandler = (
   method: string,
@@ -19,6 +20,7 @@ const JSON_API_ROUTES: Record<string, JsonApiHandler> = {
 
 const VOICE_TRANSCRIBE_ROUTE = '/api/voice/transcribe'
 const EMAIL_API_ROUTES = ['/api/email/draft', '/api/email/send'] as const
+const SEARCH_API_ROUTES = ['/api/search/suggest'] as const
 
 function readRequestBody(req: import('node:http').IncomingMessage): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -68,6 +70,30 @@ function devApiPlugin(env: Record<string, string>): Plugin {
               body = JSON.parse(bodyBuffer.toString('utf-8'))
             }
             const result = await handleEmailRoute(
+              pathname,
+              req.method ?? 'GET',
+              body,
+              env.GEMINI_API_KEY,
+            )
+            res.statusCode = result.status
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify(result.body))
+          } catch {
+            res.statusCode = 500
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: 'Request failed.' }))
+          }
+          return
+        }
+
+        if (SEARCH_API_ROUTES.includes(pathname as (typeof SEARCH_API_ROUTES)[number])) {
+          try {
+            const bodyBuffer = await readRequestBody(req)
+            let body: unknown = undefined
+            if (bodyBuffer.length > 0) {
+              body = JSON.parse(bodyBuffer.toString('utf-8'))
+            }
+            const result = await handleSearchRoute(
               pathname,
               req.method ?? 'GET',
               body,

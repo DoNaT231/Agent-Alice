@@ -12,7 +12,7 @@ export interface ChatMessage {
   content: string
   payload?: MessagePayload | null
   model?: string
-  moduleUsed?: 'chat' | 'email' | 'business' | 'profile' | 'jobs' | null
+  moduleUsed?: 'chat' | 'email' | 'business' | 'profile' | 'jobs' | 'search' | null
   createdAt: number
 }
 

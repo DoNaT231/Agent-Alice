@@ -1,22 +1,25 @@
+/**
+ * Copyright (c) 2026 Komoróczy Donát. Minden jog fenntartva.
+ * Email: donatkomoroczy@gmail.com
+ *
+ * Titkárnő (secretary) chat workflow – szabályalapú intent felismerés után tool hívások.
+ * Nem közvetlenül service-eket hív: intent → intentMapper → tool → chat üzenet.
+ * A keresés még külön flow (searchService), nem tool.
+ * Kezeli a függő email címzettet is (hiányzó profil kitöltése közben).
+ */
+
 import type { ChatMessage } from '../../../types/chat'
 import type { ProfileFieldKey } from '../../../../shared/types/profile'
+import { PROFILE_FIELD_LABELS } from '../../../../shared/types/profile'
+import { detectSecretaryIntent } from '../../../../shared/secretary/intentParser'
+import { extractProfileUpdates } from '../../../../shared/secretary/profileExtractor'
+import { fetchSearchSuggestions } from '../../search/services/searchService'
 import {
-  DRIVING_SCHOOL_EMAIL_REQUIRED_FIELDS,
-  PROFILE_FIELD_LABELS,
-} from '../../../../shared/types/profile'
-import { detectSecretaryIntent, wantsManualProfileForm } from '../../../../shared/secretary/intentParser'
-import {
-  formatProfileSaveConfirmation,
-  getMissingProfileFields,
-  extractProfileUpdates,
-} from '../../../../shared/secretary/profileExtractor'
-import { generateEmailDraftFromProfile } from '../../email/services/emailApi'
-import { createEmailDraft } from '../../email/services/emailDraftService'
-import {
-  getUpdatedFieldKeys,
-  getUserProfile,
-  updateUserProfile,
-} from '../../profile/services/profileService'
+  mapContinueEmailDraftToolCall,
+  mapInlineProfileUpdateToToolCall,
+  mapIntentToToolCall,
+} from '../../../../lib/tools/intentMapper'
+import { executeToolAndBuildMessage } from '../../tools/services/toolChatBridge'
 
 type AssistantMessageInput = Omit<ChatMessage, 'id' | 'createdAt'>
 
@@ -28,6 +31,7 @@ export interface SecretaryWorkflowOptions {
   setPendingEmailTo?: (to: string | null) => void
 }
 
+/** Fő belépési pont: ha kezeli az üzenetet, 'handled', különben átadja a sima chatnek. */
 export async function runSecretaryWorkflow(
   options: SecretaryWorkflowOptions,
 ): Promise<'handled' | 'fallback'> {
@@ -35,22 +39,16 @@ export async function runSecretaryWorkflow(
   const pendingTo = options.getPendingEmailTo?.()
   const inlineUpdates = extractProfileUpdates(options.userMessage)
 
+  // Függő email mellett inline profil frissítés (pl. „a telefonszámom 06…”)
   if (intent.type === 'chat' && pendingTo && Object.keys(inlineUpdates).length > 0) {
-    await updateUserProfile(options.userId, inlineUpdates)
-    const fieldKeys = getUpdatedFieldKeys(inlineUpdates)
+    const updateCall = mapInlineProfileUpdateToToolCall(options.userId, inlineUpdates)
+    if (updateCall) {
+      await options.addAssistantMessage(
+        await executeToolAndBuildMessage(updateCall.toolName, updateCall.input),
+      )
+    }
 
-    await options.addAssistantMessage({
-      role: 'assistant',
-      type: 'profile_updated',
-      content: formatProfileSaveConfirmation(inlineUpdates),
-      payload: {
-        updatedFieldKeys: fieldKeys,
-        showProfileButton: true,
-      },
-      moduleUsed: 'profile',
-    })
-
-    await startEmailDraftFlow({
+    await runEmailCreateDraftTool({
       userId: options.userId,
       to: pendingTo,
       userMessage: options.userMessage,
@@ -65,65 +63,78 @@ export async function runSecretaryWorkflow(
     return 'fallback'
   }
 
-  if (intent.type === 'profile_save') {
-    await updateUserProfile(options.userId, intent.updates)
-    const fieldKeys = getUpdatedFieldKeys(intent.updates)
+  const toolCall = mapIntentToToolCall(intent, options.userMessage, options.userId)
 
-    await options.addAssistantMessage({
-      role: 'assistant',
-      type: 'profile_updated',
-      content: formatProfileSaveConfirmation(intent.updates),
-      payload: {
-        updatedFieldKeys: fieldKeys,
-        showProfileButton: true,
-      },
-      moduleUsed: 'profile',
-    })
+  if (toolCall) {
+    if (intent.type === 'email_draft') {
+      options.setPendingEmailTo?.(intent.to)
+    }
 
-    const pendingTo = options.getPendingEmailTo?.()
-    if (pendingTo) {
-      await startEmailDraftFlow({
-        userId: options.userId,
-        to: pendingTo,
-        userMessage: options.userMessage,
-        addAssistantMessage: options.addAssistantMessage,
-        setPendingEmailTo: options.setPendingEmailTo,
-      })
+    const message = await executeToolAndBuildMessage(
+      toolCall.toolName,
+      toolCall.input,
+      toolCall.postProcess,
+    )
+
+    await options.addAssistantMessage(message)
+
+    if (intent.type === 'profile_save') {
+      const pendingEmail = options.getPendingEmailTo?.()
+      if (pendingEmail) {
+        await runEmailCreateDraftTool({
+          userId: options.userId,
+          to: pendingEmail,
+          userMessage: options.userMessage,
+          addAssistantMessage: options.addAssistantMessage,
+          setPendingEmailTo: options.setPendingEmailTo,
+        })
+      }
+    }
+
+    if (intent.type === 'email_draft' && message.type === 'email_draft') {
+      options.setPendingEmailTo?.(null)
+    }
+
+    if (intent.type === 'email_draft' && message.type === 'profile_missing_info') {
+      options.setPendingEmailTo?.(intent.to)
     }
 
     return 'handled'
   }
 
-  if (intent.type === 'show_profile') {
-    const profile = await getUserProfile(options.userId)
-    const manualForm = wantsManualProfileForm(options.userMessage)
-
-    await options.addAssistantMessage({
-      role: 'assistant',
-      type: 'profile_edit',
-      content: manualForm
-        ? 'Rendben, itt tudod kézzel kitölteni az adataidat. Ha kész vagy, kattints a Mentés gombra.'
-        : 'Itt vannak a mentett adataid. Szerkesztheted és elmentheted őket.',
-      payload: { profile },
-      moduleUsed: 'profile',
-    })
-
-    return 'handled'
-  }
-
-  if (intent.type === 'email_draft') {
-    options.setPendingEmailTo?.(intent.to)
-    await startEmailDraftFlow({
-      userId: options.userId,
-      to: intent.to,
-      userMessage: options.userMessage,
-      addAssistantMessage: options.addAssistantMessage,
-      setPendingEmailTo: options.setPendingEmailTo,
-    })
-    return 'handled'
+  if (intent.type === 'search') {
+    try {
+      await startSearchFlow({
+        query: intent.query,
+        addAssistantMessage: options.addAssistantMessage,
+      })
+      return 'handled'
+    } catch {
+      return 'fallback'
+    }
   }
 
   return 'fallback'
+}
+
+/** Email draft tool újrahívása (profil kitöltés után). */
+export async function runEmailCreateDraftTool(options: {
+  userId: string
+  to: string
+  userMessage: string
+  addAssistantMessage: (message: AssistantMessageInput) => Promise<void>
+  setPendingEmailTo?: (to: string | null) => void
+}): Promise<void> {
+  const toolCall = mapContinueEmailDraftToolCall(options.userId, options.to, options.userMessage)
+  const message = await executeToolAndBuildMessage(toolCall.toolName, toolCall.input)
+
+  await options.addAssistantMessage(message)
+
+  if (message.type === 'email_draft') {
+    options.setPendingEmailTo?.(null)
+  } else if (message.type === 'profile_missing_info') {
+    options.setPendingEmailTo?.(options.to)
+  }
 }
 
 export async function startEmailDraftFlow(options: {
@@ -133,84 +144,42 @@ export async function startEmailDraftFlow(options: {
   addAssistantMessage: (message: AssistantMessageInput) => Promise<void>
   setPendingEmailTo?: (to: string | null) => void
 }): Promise<void> {
-  const profile = await getUserProfile(options.userId)
-  const missingKeys = getMissingProfileFields(profile, DRIVING_SCHOOL_EMAIL_REQUIRED_FIELDS)
-
-  if (missingKeys.length > 0) {
-    options.setPendingEmailTo?.(options.to)
-    await options.addAssistantMessage({
-      role: 'assistant',
-      type: 'profile_missing_info',
-      content:
-        'Az email elkészítéséhez még szükségem van néhány adatra. Kérlek, töltsd ki az alábbi mezőket.',
-      payload: {
-        missingFieldKeys: missingKeys,
-        profile,
-        pendingEmailTo: options.to,
-        message: missingKeys.map((key) => PROFILE_FIELD_LABELS[key]).join(', '),
-      },
-      moduleUsed: 'profile',
-    })
-    return
-  }
-
-  await createEmailDraftMessage(options)
+  await runEmailCreateDraftTool(options)
 }
 
-async function createEmailDraftMessage(options: {
-  userId: string
-  to: string
-  userMessage: string
-  addAssistantMessage: (message: AssistantMessageInput) => Promise<void>
-  setPendingEmailTo?: (to: string | null) => void
-}): Promise<void> {
-  const profile = await getUserProfile(options.userId)
-  const generated = await generateEmailDraftFromProfile({
-    to: options.to,
-    profile,
-    userMessage: options.userMessage,
-  })
-
-  const draftId = await createEmailDraft(options.userId, {
-    type: 'outreach',
-    to: generated.to,
-    subject: generated.subject,
-    body: generated.body,
-    status: 'draft',
-    source: 'chat',
-  })
-
-  await options.addAssistantMessage({
-    role: 'assistant',
-    type: 'email_draft',
-    content: 'Előkészítettem az emailt.',
-    payload: {
-      draftId,
-      to: generated.to,
-      subject: generated.subject,
-      body: generated.body,
-    },
-    moduleUsed: 'email',
-  })
-
-  options.setPendingEmailTo?.(null)
-}
-
+/** Profil kártya megjelenítése tool-lal (profile.get → profile_edit). */
 export async function showProfileCardMessage(
   userId: string,
   addAssistantMessage: (message: AssistantMessageInput) => Promise<void>,
 ): Promise<void> {
-  const profile = await getUserProfile(userId)
-
-  await addAssistantMessage({
-    role: 'assistant',
-    type: 'profile_edit',
-    content: 'Itt vannak a mentett adataid.',
-    payload: { profile },
-    moduleUsed: 'profile',
-  })
+  await addAssistantMessage(
+    await executeToolAndBuildMessage('profile.get', { userId }, (result) => ({
+      ...result,
+      type: 'profile_edit',
+      content: 'Itt vannak a mentett adataid.',
+    })),
+  )
 }
 
 export function buildMissingFieldLabels(keys: ProfileFieldKey[]): string[] {
   return keys.map((key) => PROFILE_FIELD_LABELS[key])
+}
+
+/** Keresési javaslatok (még nem tool – külön search modul). */
+export async function startSearchFlow(options: {
+  query: string
+  addAssistantMessage: (message: AssistantMessageInput) => Promise<void>
+}): Promise<void> {
+  const generated = await fetchSearchSuggestions({ query: options.query })
+
+  await options.addAssistantMessage({
+    role: 'assistant',
+    type: 'search_results',
+    content: generated.intro,
+    payload: {
+      query: options.query,
+      results: generated.results,
+    },
+    moduleUsed: 'search',
+  })
 }

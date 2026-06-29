@@ -5,7 +5,20 @@ export type SecretaryIntent =
   | { type: 'show_profile' }
   | { type: 'profile_save'; updates: Partial<UserProfile> }
   | { type: 'email_draft'; to: string }
+  | { type: 'search'; query: string }
   | { type: 'chat' }
+
+export function wantsSearchQuery(text: string): boolean {
+  const lower = text.toLowerCase().trim()
+
+  return (
+    /\bkeress\b|\bkeresel\b|\bkeresnék\b|\bkeresnek\b|\bkeressünk\b|\bkeresünk\b/i.test(
+      lower,
+    ) ||
+    /\bkeresés\b.*\b(növény|iskola|inspiráció|inspiraciot|hely|üzlet|uzlet)/i.test(lower) ||
+    /\b(inspirációt|inspiraciot)\b.*\bkeres/i.test(lower)
+  )
+}
 
 export function wantsManualProfileForm(text: string): boolean {
   const lower = text.toLowerCase().trim()
@@ -47,6 +60,10 @@ export function detectSecretaryIntent(text: string): SecretaryIntent {
 
   if (wantsEmail && recipient) {
     return { type: 'email_draft', to: recipient }
+  }
+
+  if (wantsSearchQuery(text)) {
+    return { type: 'search', query: text.trim() }
   }
 
   const updates = extractProfileUpdates(text)

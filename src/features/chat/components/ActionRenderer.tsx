@@ -6,10 +6,12 @@ import type {
   EmailDraftPayload,
   EmailSentStatusPayload,
   EmailSummaryPayload,
+  ProfileDataPayload,
   ProfileEditPayload,
   ProfileMissingInfoPayload,
   ProfileUpdatedPayload,
 } from '../../../../shared/types/messages'
+import type { SearchResultsPayload } from '../../../../shared/types/search'
 import { BusinessDetailsCard } from '../../business/components/BusinessDetailsCard'
 import { BusinessResultsCard } from '../../business/components/BusinessResultsCard'
 import { EmailConfirmationCard } from '../../email/components/EmailConfirmationCard'
@@ -17,6 +19,7 @@ import { EmailDraftCard } from '../../email/components/EmailDraftCard'
 import { EmailSummaryCard } from '../../email/components/EmailSummaryCard'
 import { MissingProfileInfoCard } from '../../profile/components/MissingProfileInfoCard'
 import { PersonalInfoCard } from '../../profile/components/PersonalInfoCard'
+import { SearchResultsList } from '../../search/components/SearchResultsList'
 import { useOptionalChatWorkflow } from '../context/useChatWorkflow'
 import { MarkdownMessage } from '../../../components/chat/MarkdownMessage'
 import { Card } from '../../../shared/components/Card'
@@ -135,8 +138,9 @@ export function ActionRenderer({ message }: ActionRendererProps) {
       )
     }
 
-    case 'profile_edit': {
-      const data = asPayload<ProfileEditPayload>(payload)
+    case 'profile_edit':
+    case 'profile_data': {
+      const data = asPayload<ProfileEditPayload | ProfileDataPayload>(payload)
       if (!data) break
       return (
         <div className="space-y-3">
@@ -153,6 +157,20 @@ export function ActionRenderer({ message }: ActionRendererProps) {
         <div className="space-y-3">
           <MessageIntro content={content} />
           <MissingProfileInfoCard {...data} />
+        </div>
+      )
+    }
+
+    case 'search_results': {
+      const data = asPayload<SearchResultsPayload>(payload)
+      if (!data?.results?.length) {
+        return <MarkdownMessage content={content} variant="assistant" />
+      }
+
+      return (
+        <div className="space-y-3">
+          <MessageIntro content={content} />
+          <SearchResultsList query={data.query} results={data.results} />
         </div>
       )
     }

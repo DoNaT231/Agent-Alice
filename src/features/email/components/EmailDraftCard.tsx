@@ -3,9 +3,10 @@ import { Loader2, Save, Send } from 'lucide-react'
 import { useAuth } from '../../../shared/hooks/useAuth'
 import { useOptionalChatWorkflow } from '../../chat/context/useChatWorkflow'
 import { canSendEmail } from '../utils/emailValidators'
+import type { EmailSentStatusPayload } from '../../../../shared/types/messages'
+import { runTool } from '../../tools/services/toolRunner'
 import {
   createEmailDraft,
-  markEmailDraftSentMock,
   updateEmailDraft,
 } from '../services/emailDraftService'
 
@@ -83,19 +84,14 @@ export function EmailDraftCard({
       const savedId = await persistDraft()
       if (!savedId || !user) return
 
-      await markEmailDraftSentMock(user.uid, savedId)
+      const result = await runTool('email.mockSend', {
+        userId: user.uid,
+        draftId: savedId,
+      })
 
-      await workflow?.appendEmailSentStatus(
-        `Az email mock módon elküldve ide: ${to.trim()}`,
-        {
-          draftId: savedId,
-          to: to.trim(),
-          subject: subject.trim(),
-          status: 'sent_mock',
-          mock: true,
-          messageId: `mock_${savedId}`,
-        },
-      )
+      const statusPayload = result.payload as EmailSentStatusPayload
+
+      await workflow?.appendEmailSentStatus(result.content, statusPayload)
 
       setFeedback('Mock küldés rögzítve.')
     } catch {

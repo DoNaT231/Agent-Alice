@@ -8,10 +8,12 @@ export type MessageType =
   | 'email_sent_status'
   | 'email_summary'
   | 'profile_edit'
+  | 'profile_data'
   | 'profile_missing_info'
   | 'job_results'
   | 'application_draft'
   | 'voice_transcript'
+  | 'search_results'
 
 export interface BusinessItem {
   id: string
@@ -64,6 +66,10 @@ export interface EmailSummaryPayload {
 
 import type { ProfileFieldKey, UserProfile } from './profile.js'
 
+export interface ProfileDataPayload {
+  profile: UserProfile
+}
+
 export interface ProfileEditPayload {
   profile: UserProfile
 }
@@ -77,7 +83,9 @@ export interface ProfileMissingInfoPayload {
 
 export interface ProfileUpdatedPayload {
   updatedFieldKeys: ProfileFieldKey[]
+  updatedFields?: Partial<UserProfile>
   showProfileButton?: boolean
+  profile?: UserProfile
 }
 
 export interface JobResultsPayload {
@@ -102,6 +110,9 @@ export interface VoiceTranscriptPayload {
   transcript: string
 }
 
+import type { SearchResultsPayload } from './search.js'
+export type { SearchResultsPayload, SearchResultItem } from './search.js'
+
 export type MessagePayload =
   | BusinessResultsPayload
   | BusinessDetailsPayload
@@ -110,11 +121,13 @@ export type MessagePayload =
   | EmailSentStatusPayload
   | EmailSummaryPayload
   | ProfileEditPayload
+  | ProfileDataPayload
   | ProfileMissingInfoPayload
   | ProfileUpdatedPayload
   | JobResultsPayload
   | ApplicationDraftPayload
   | VoiceTranscriptPayload
+  | SearchResultsPayload
   | Record<string, unknown>
 
 export const ACTION_MESSAGE_TYPES: MessageType[] = [
@@ -126,9 +139,11 @@ export const ACTION_MESSAGE_TYPES: MessageType[] = [
   'email_sent_status',
   'email_summary',
   'profile_edit',
+  'profile_data',
   'profile_missing_info',
   'job_results',
   'application_draft',
+  'search_results',
 ]
 
 export function isActionMessageType(type: MessageType | undefined): boolean {
